@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>gobacktest — dip strategy lab</title>
+<script src="/lwc.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f4f6; --panel:#fff; --ink:#1a1a1e; --muted:#6b6b78; --line:#e6e6ec;
+  --accent:#7e57c2; --accent2:#26a69a; --bh:#9098a8; --danger:#ef5350; --field:#fff;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#111114; --panel:#1a1a1d; --ink:#ececf0; --muted:#9a9aa6; --line:#2a2a30;
+  --accent:#9575cd; --accent2:#26a69a; --bh:#6b7280; --danger:#ef5350; --field:#222228;
+}}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.app{display:grid;grid-template-columns:340px 1fr;height:100vh}
+aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:18px 16px}
+main{overflow-y:auto;padding:18px 20px}
+h1{font-size:15px;font-weight:700;letter-spacing:.02em;margin-bottom:2px}
+.sub{color:var(--muted);font-size:12px;margin-bottom:16px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:18px 0 8px;font-weight:700}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+input,select{width:100%;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:7px 8px;font:inherit;font-size:13px}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.field{margin-bottom:10px}
+.cond{border:1px solid var(--line);border-radius:9px;padding:10px;margin-bottom:8px;background:var(--bg)}
+.cond .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.cond .top b{font-size:12px}
+.x{cursor:pointer;color:var(--muted);border:none;background:none;font-size:16px;line-height:1}
+.x:hover{color:var(--danger)}
+.btn{cursor:pointer;border:1px solid var(--line);background:var(--field);color:var(--ink);border-radius:7px;padding:7px 10px;font:inherit;font-size:12px}
+.btn:hover{border-color:var(--accent)}
+.btn.add{width:100%;margin-top:2px}
+.run{width:100%;margin-top:14px;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer}
+.run:disabled{opacity:.55;cursor:default}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets .btn{flex:1 1 auto}
+.check{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.check input{width:auto}
+.check label{margin:0}
+.err{background:rgba(239,83,80,.12);border:1px solid var(--danger);color:var(--danger);padding:9px 11px;border-radius:8px;margin-bottom:14px;font-size:13px;display:none}
+.range{color:var(--muted);font-size:12px;margin-bottom:12px}
+.cards{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.card{flex:1 1 120px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+.card .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.card .val{font-size:20px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+.card .bh{font-size:11px;color:var(--muted);margin-top:2px}
+.chartwrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:16px}
+.chartwrap .ttl{font-size:12px;font-weight:700;margin-bottom:8px;display:flex;gap:14px;align-items:center}
+.legend{display:inline-flex;align-items:center;gap:5px;font-weight:400;color:var(--muted);font-size:11px}
+.dot{width:10px;height:3px;border-radius:2px;display:inline-block}
+.chart{height:300px}
+.hint{color:var(--muted);font-size:12px;margin:40px auto;text-align:center;max-width:420px}
+.pos{color:var(--accent2)} .neg{color:var(--danger)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Dip Strategy Lab</h1>
+    <div class="sub">gobacktest · live Yahoo / Oanda data</div>
+
+    <h2>Presets</h2>
+    <div class="presets">
+      <button class="btn" data-preset="recommended">Recommended</button>
+      <button class="btn" data-preset="rsi">RSI oversold</button>
+      <button class="btn" data-preset="wrema">WR+EMA</button>
+      <button class="btn" data-preset="eu50">EU50 %R (Oanda)</button>
+    </div>
+
+    <h2>Market</h2>
+    <div class="grid2">
+      <div class="field"><label>Data source</label>
+        <select id="source"><option value="yahoo">Yahoo Finance</option><option value="oanda">Oanda (live v20)</option></select></div>
+      <div class="field"><label>Interval</label>
+        <select id="interval">
+          <option value="1d">1 day</option><option value="4h">4 hours</option><option value="1h">1 hour</option>
+          <option value="10m">10 min</option><option value="1wk">1 week</option>
+        </select></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Symbol / instrument</label><input id="symbol" value="SPY"></div>
+      <div class="field"><label>Cash ($)</label><input id="cash" type="number" value="10000"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Start</label><input id="start" type="date" value="2020-01-01"></div>
+      <div class="field"><label>End</label><input id="end" type="date"></div>
+    </div>
+
+    <h2>Strategy</h2>
+    <div class="field">
+      <select id="strategy">
+        <option value="conditions">Custom conditions</option>
+        <option value="wr">Williams %R oversold (library)</option>
+        <option value="wrema">Williams %R + EMA oversold (library)</option>
+      </select>
+    </div>
+
+    <div id="condsSection">
+      <h2>Entry conditions</h2>
+      <div id="conds"></div>
+      <button class="btn add" id="addCond">+ add condition</button>
+      <div class="field" style="margin-top:10px">
+        <label>Combine conditions with</label>
+        <select id="logic"><option>AND</option><option>OR</option></select>
+      </div>
+    </div>
+
+    <div id="wrSection" style="display:none">
+      <h2>Williams %R parameters</h2>
+      <div class="grid2">
+        <div class="field"><label>%R period</label><input id="wrPeriod" type="number" value="21"></div>
+        <div class="field"><label>%R threshold</label><input id="wrThr" type="number" value="-80" step="5"></div>
+      </div>
+      <div class="grid2" id="wrEmaParams">
+        <div class="field"><label>EMA period</label><input id="emaPeriod" type="number" value="12"></div>
+        <div class="field"><label>EMA threshold</label><input id="emaThr" type="number" value="-80" step="5"></div>
+      </div>
+    </div>
+
+    <h2>Exit</h2>
+    <div class="grid3">
+      <div class="field"><label>Take-profit %</label><input id="tp" type="number" value="15" step="0.5"></div>
+      <div class="field" id="slField"><label>Stop-loss %</label><input id="sl" type="number" value="0" step="0.5"></div>
+      <div class="field" id="timeExitField"><label>Time exit (bars)</label><input id="timeExit" type="number" value="0"></div>
+    </div>
+
+    <h2>Costs &amp; leverage</h2>
+    <div class="grid3">
+      <div class="field"><label>Spread (pts)</label><input id="spreadPts" type="number" value="0" step="0.1" min="0"></div>
+      <div class="field"><label>Financing %/yr</label><input id="finRatePct" type="number" value="0" step="0.01"></div>
+      <div class="field"><label>Leverage ×</label><input id="leverage" type="number" value="1" step="1" min="1" max="100"></div>
+    </div>
+    <button class="btn add" id="fetchCosts" style="display:none">⤓ Fetch live costs from Oanda</button>
+
+    <div id="posSection">
+      <h2>Position management</h2>
+      <div class="check"><input type="checkbox" id="pyramid" checked><label for="pyramid">Pyramid (stack dip lots)</label></div>
+      <div class="grid2">
+        <div class="field"><label>Lot % (pyramid)</label><input id="lotPct" type="number" value="20" step="1" min="1" max="100"></div>
+        <div class="field"><label>Cooldown (bars)</label><input id="cooldown" type="number" value="3"></div>
+      </div>
+    </div>
+
+    <button class="run" id="run">Run backtest</button>
+  </aside>
+
+  <main>
+    <div class="err" id="err"></div>
+    <div class="range" id="range"></div>
+    <div class="cards" id="cards"></div>
+    <div class="chartwrap">
+      <div class="ttl">Equity curve
+        <span class="legend"><span class="dot" style="background:var(--accent)"></span>Strategy</span>
+        <span class="legend"><span class="dot" style="background:var(--bh)"></span>Buy &amp; Hold</span>
+      </div>
+      <div class="chart" id="eqChart"></div>
+    </div>
+    <div class="chartwrap">
+      <div class="ttl">Price &amp; trades
+        <span class="legend"><span class="dot" style="background:var(--accent2)"></span>buy</span>
+        <span class="legend"><span class="dot" style="background:var(--bh)"></span>sell</span>
+      </div>
+      <div class="chart" id="pxChart"></div>
+    </div>
+    <div class="hint" id="hint">Configure a strategy on the left and hit <b>Run backtest</b>.</div>
+  </main>
+</div>
+
+<script>
+const L = LightweightCharts;
+const $ = id => document.getElementById(id);
+
+// indicator metadata: label, second-param need, param labels, sensible defaults
+const INDS = {
+  rsi:     {label:"RSI",              p2:false, p1:"Period", def:{p1:14,op:"<",value:30}},
+  wr:      {label:"Williams %R",      p2:false, p1:"Period", def:{p1:14,op:"<",value:-80}},
+  wrema:   {label:"Williams %R + EMA",p2:true,  p1:"%R period", p2l:"EMA period", def:{p1:21,p2:13,op:"<=",value:-40}},
+  cci:     {label:"CCI",              p2:false, p1:"Period", def:{p1:20,op:"<",value:-100}},
+  stoch_k: {label:"Stochastic %K",    p2:false, p1:"Period", def:{p1:14,op:"<",value:20}},
+  roc:     {label:"ROC %",            p2:false, p1:"Period", def:{p1:10,op:"<",value:0}},
+  adx:     {label:"ADX",              p2:false, p1:"Period", def:{p1:14,op:">",value:25}},
+  bb_pctb: {label:"Bollinger %B",     p2:false, p1:"Period", def:{p1:20,op:"<",value:0}},
+  sma_dist:{label:"Close vs SMA %",   p2:false, p1:"Period", def:{p1:50,op:"<",value:0}},
+};
+const OPS = ["<","<=",">",">="];
+
+function condRow(c){
+  c = c || {indicator:"wrema", ...INDS.wrema.def};
+  const el = document.createElement("div");
+  el.className = "cond";
+  const meta = INDS[c.indicator];
+  el.innerHTML = `
+    <div class="top"><b>condition</b><button class="x" title="remove">×</button></div>
+    <div class="field"><select class="ci">${Object.entries(INDS).map(([k,v])=>`<option value="${k}" ${k===c.indicator?"selected":""}>${v.label}</option>`).join("")}</select></div>
+    <div class="grid2">
+      <div><label class="l1">${meta.p1}</label><input class="p1" type="number" value="${c.p1??meta.def.p1}"></div>
+      <div class="p2wrap" style="${meta.p2?"":"display:none"}"><label>${meta.p2l||""}</label><input class="p2" type="number" value="${c.p2??meta.def.p2??0}"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Operator</label><select class="op">${OPS.map(o=>`<option ${o===c.op?"selected":""}>${o}</option>`).join("")}</select></div>
+      <div><label>Value</label><input class="val" type="number" step="0.5" value="${c.value??meta.def.value}"></div>
+    </div>`;
+  el.querySelector(".x").onclick = ()=>{ el.remove(); };
+  el.querySelector(".ci").onchange = e=>{
+    const m = INDS[e.target.value];
+    el.querySelector(".l1").textContent = m.p1;
+    el.querySelector(".p1").value = m.def.p1;
+    el.querySelector(".p2wrap").style.display = m.p2?"":"none";
+    if(m.p2){ el.querySelector(".p2wrap label").textContent = m.p2l; el.querySelector(".p2").value = m.def.p2; }
+    el.querySelector(".op").value = m.def.op;
+    el.querySelector(".val").value = m.def.value;
+  };
+  return el;
+}
+function addCond(c){ $("conds").appendChild(condRow(c)); }
+function readConds(){
+  return [...$("conds").querySelectorAll(".cond")].map(el=>({
+    indicator: el.querySelector(".ci").value,
+    p1: +el.querySelector(".p1").value,
+    p2: +(el.querySelector(".p2")?.value||0),
+    op: el.querySelector(".op").value,
+    value: +el.querySelector(".val").value,
+  }));
+}
+
+const yearAgo = () => new Date(Date.now()-365*864e5).toISOString().slice(0,10);
+const PRESETS = {
+  recommended:{source:"yahoo",interval:"1d",strategy:"conditions",symbol:"SPY",start:"2020-01-01",tp:15,sl:0,timeExit:0,pyramid:true,lotPct:20,cooldown:3,logic:"AND",
+    conditions:[{indicator:"wrema",p1:21,p2:13,op:"<=",value:-40}]},
+  rsi:{source:"yahoo",interval:"1d",strategy:"conditions",symbol:"SPY",start:"2020-01-01",tp:5,sl:0,timeExit:0,pyramid:false,lotPct:20,cooldown:3,logic:"AND",
+    conditions:[{indicator:"rsi",p1:14,op:"<",value:30}]},
+  wrema:{source:"yahoo",interval:"1d",strategy:"conditions",symbol:"SPY",start:"2021-01-01",tp:10,sl:0,timeExit:0,pyramid:false,lotPct:20,cooldown:3,logic:"AND",
+    conditions:[{indicator:"wrema",p1:21,p2:13,op:"<=",value:-70}]},
+  eu50:{source:"oanda",interval:"4h",strategy:"wr",symbol:"EU50_EUR",start:yearAgo(),tp:0.5,sl:0,timeExit:0,pyramid:false,lotPct:20,cooldown:3,logic:"AND",
+    conditions:[],wrPeriod:21,wrThr:-80,emaPeriod:12,emaThr:-80,spreadPts:1.5,finRatePct:4.68,leverage:1},
+};
+function syncStrategyUI(){
+  const s=$("strategy").value;
+  const canned = s!=="conditions";
+  $("condsSection").style.display = canned?"none":"";
+  $("posSection").style.display   = canned?"none":"";
+  $("slField").style.display      = canned?"none":"";
+  $("timeExitField").style.display= canned?"none":"";
+  $("wrSection").style.display    = canned?"":"none";
+  $("wrEmaParams").style.display  = s==="wrema"?"":"none";
+  $("fetchCosts").style.display   = $("source").value==="oanda"?"":"none";
+}
+async function fetchCosts(){
+  const btn=$("fetchCosts"); btn.disabled=true; btn.textContent="Fetching…";
+  try{
+    const r=await fetch(`/api/instrument?instrument=${encodeURIComponent($("symbol").value.trim().toUpperCase())}`);
+    const d=await r.json();
+    if(d.error){ showErr(d.error); return; }
+    $("spreadPts").value=d.spreadPts; $("finRatePct").value=d.finRatePct;
+    $("err").style.display="none";
+  }catch(e){ showErr(`Fetch costs failed: ${e.message}`); }
+  finally{ btn.disabled=false; btn.textContent="⤓ Fetch live costs from Oanda"; }
+}
+function applyPreset(p){
+  $("source").value=p.source||"yahoo"; $("interval").value=p.interval||"1d";
+  $("strategy").value=p.strategy||"conditions";
+  $("symbol").value=p.symbol; $("start").value=p.start;
+  $("tp").value=p.tp; $("sl").value=p.sl; $("timeExit").value=p.timeExit;
+  $("pyramid").checked=p.pyramid; $("lotPct").value=p.lotPct; $("cooldown").value=p.cooldown;
+  $("logic").value=p.logic;
+  if(p.wrPeriod)  $("wrPeriod").value=p.wrPeriod;
+  if(p.wrThr!==undefined)  $("wrThr").value=p.wrThr;
+  if(p.emaPeriod) $("emaPeriod").value=p.emaPeriod;
+  if(p.emaThr!==undefined) $("emaThr").value=p.emaThr;
+  $("spreadPts").value=p.spreadPts??0; $("finRatePct").value=p.finRatePct??0; $("leverage").value=p.leverage??1;
+  $("conds").innerHTML=""; p.conditions.forEach(addCond);
+  syncStrategyUI();
+}
+document.querySelectorAll("[data-preset]").forEach(b=>b.onclick=()=>applyPreset(PRESETS[b.dataset.preset]));
+$("addCond").onclick=()=>addCond();
+$("strategy").onchange=syncStrategyUI;
+$("source").onchange=syncStrategyUI;
+$("fetchCosts").onclick=fetchCosts;
+
+// charts
+const theme = () => {
+  const d = matchMedia("(prefers-color-scheme:dark)").matches;
+  return d ? {bg:"#1a1a1d",text:"#c9c9d2",grid:"#26262c"} : {bg:"#ffffff",text:"#333",grid:"#f0f0f3"};
+};
+function mkChart(el){
+  const t=theme();
+  const c=L.createChart(el,{height:300,layout:{background:{type:"solid",color:t.bg},textColor:t.text},
+    grid:{vertLines:{color:t.grid},horzLines:{color:t.grid}},timeScale:{rightOffset:4,borderVisible:false},
+    rightPriceScale:{borderVisible:false}});
+  new ResizeObserver(()=>c.applyOptions({width:el.clientWidth})).observe(el);
+  c.applyOptions({width:el.clientWidth});
+  return c;
+}
+let eqChart, pxChart;
+function ensureCharts(){
+  if(!eqChart) eqChart=mkChart($("eqChart"));
+  if(!pxChart) pxChart=mkChart($("pxChart"));
+}
+
+async function run(){
+  const body={
+    source:$("source").value, interval:$("interval").value,
+    strategy:$("strategy").value,
+    symbol:$("symbol").value.trim().toUpperCase(),
+    start:$("start").value, end:$("end").value,
+    cash:+$("cash").value,
+    conditions:readConds(), logic:$("logic").value,
+    tp:+$("tp").value, sl:+$("sl").value, timeExit:+$("timeExit").value,
+    pyramid:$("pyramid").checked, lotPct:+$("lotPct").value, cooldown:+$("cooldown").value,
+    wrPeriod:+$("wrPeriod").value, emaPeriod:+$("emaPeriod").value,
+    wrThr:+$("wrThr").value, emaThr:+$("emaThr").value,
+    spreadPts:+$("spreadPts").value, finRatePct:+$("finRatePct").value, leverage:+$("leverage").value,
+  };
+  $("err").style.display="none";
+  const btn=$("run"); btn.disabled=true; btn.textContent="Running…";
+  console.log("POST /api/backtest", body);
+  try{
+    const r=await fetch("/api/backtest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const text=await r.text();
+    let d;
+    try{ d=JSON.parse(text); }
+    catch(pe){
+      console.error("non-JSON response", r.status, text);
+      showErr(`Server returned a non-JSON response (HTTP ${r.status}). First 200 chars: ${text.slice(0,200)}`);
+      return;
+    }
+    if(d.error){ console.warn("backtest error:", d.error); showErr(d.error); return; }
+    console.log("backtest ok", {equity:d.equity?.length, markers:d.markers?.length});
+    render(d);
+  }catch(e){
+    console.error("fetch failed", e);
+    showErr(`Request failed: ${e.message}. The server may have crashed or stopped — check the terminal running "go run ." for a stack trace.`);
+  }
+  finally{ btn.disabled=false; btn.textContent="Run backtest"; }
+}
+function showErr(m){ const e=$("err"); e.textContent=m; e.style.display="block"; }
+
+function render(d){
+  $("hint").style.display="none";
+  $("range").textContent = `${d.symbol}   ${d.range}`;
+  // stat cards
+  const num = v => parseFloat(v);
+  $("cards").innerHTML = d.stats.map(s=>{
+    let cls="";
+    if(/Return|Sharpe|CAGR|Profit/.test(s.label)){ cls = num(s.value)>=num(s.bh)&&!isNaN(num(s.bh))?"pos":""; }
+    return `<div class="card"><div class="lab">${s.label}</div>
+      <div class="val ${cls}">${s.value}</div>
+      <div class="bh">B&amp;H ${s.bh}</div></div>`;
+  }).join("");
+
+  ensureCharts();
+  // equity
+  eqChart.remove(); eqChart=mkChart($("eqChart"));
+  const eq=eqChart.addSeries(L.LineSeries,{color:getVar("--accent"),lineWidth:2,priceLineVisible:false});
+  eq.setData(d.equity);
+  const bh=eqChart.addSeries(L.LineSeries,{color:getVar("--bh"),lineWidth:2,priceLineVisible:false,lineStyle:2});
+  bh.setData(d.buyhold);
+  eqChart.timeScale().fitContent();
+  // price + markers
+  pxChart.remove(); pxChart=mkChart($("pxChart"));
+  const px=pxChart.addSeries(L.LineSeries,{color:getVar("--text")||"#888",lineWidth:1,priceLineVisible:false});
+  px.setData(d.price);
+  const markers=(d.markers||[]).map(m=>m.kind==="buy"
+    ? {time:m.time,position:"belowBar",color:getVar("--accent2"),shape:"arrowUp",text:"B"}
+    : {time:m.time,position:"aboveBar",color:getVar("--bh"),shape:"arrowDown",text:(m.pl>=0?"+":"")+m.pl.toFixed(0)}
+  ).sort((a,b)=>a.time<b.time?-1:1);
+  L.createSeriesMarkers(px, markers);
+  pxChart.timeScale().fitContent();
+}
+function getVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+// init
+$("run").onclick=run;
+applyPreset(PRESETS.recommended);
+</script>
+</body>
+</html>
