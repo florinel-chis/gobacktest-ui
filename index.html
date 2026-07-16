@@ -260,11 +260,23 @@ const SYMBOLS = {
 // Yahoo intraday lookback limits (days). T212 bars come from Yahoo, so the
 // same limits apply; Oanda has no such caps.
 const INTRADAY_MAX_DAYS = {"1m":7,"5m":59,"15m":59,"30m":59,"1h":729};
+// Intervals each backend can actually serve (mirrors the backtestsource
+// adapters): Yahoo/T212 have no 10m or 4h bars; Oanda serves everything the
+// select offers. Unsupported combinations are disabled up front so a run
+// cannot fail only after the backend fetch.
+const SUPPORTED_INTERVALS = {
+  yahoo: ["1d","1h","30m","15m","5m","1m","1wk"],
+  t212:  ["1d","1h","30m","15m","5m","1m","1wk"],
+  oanda: ["1d","4h","1h","30m","15m","5m","1m","10m","1wk"],
+};
 function syncMarketUI(){
   const src=$("source").value;
   $("symbolList").innerHTML=(SYMBOLS[src]||[]).map(s=>`<option value="${s}">`).join("");
   if(SYMBOLS[src] && !SYMBOLS[src].includes($("symbol").value.trim()))
     $("symbol").value=SYMBOLS[src][src==="t212"?1:0]; // t212 default: AAPL_US_EQ
+  const ok=SUPPORTED_INTERVALS[src]||[];
+  for(const opt of $("interval").options) opt.disabled=!ok.includes(opt.value);
+  if(!ok.includes($("interval").value)) $("interval").value="1d";
   clampStartForInterval();
 }
 function clampStartForInterval(){
