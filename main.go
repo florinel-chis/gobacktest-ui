@@ -398,6 +398,27 @@ func buildStrategy(req runReq) (backtest.Strategy, error) {
 	return nil, fmt.Errorf("unknown strategy %q (want conditions, wr or wrema)", req.Strategy)
 }
 
+// spreadFraction converts a point-denominated bid-ask spread into the
+// engine's per-fill price FRACTION: candles are mid, so each fill crosses
+// half the width, divided by a reference price. The reference is the series'
+// mean close — one static conversion is an approximation either way, but the
+// mean centres the error over the run instead of anchoring it to the first
+// bar's price level.
+func spreadFraction(pts float64, bars []backtest.Bar) float64 {
+	if pts <= 0 || len(bars) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, b := range bars {
+		sum += b.Close
+	}
+	mean := sum / float64(len(bars))
+	if mean <= 0 {
+		return 0
+	}
+	return pts / 2 / mean
+}
+
 // chartTime renders a bar time for Lightweight Charts: date string for daily
 // and coarser intervals, UNIX seconds for intraday.
 func chartTime(t time.Time, intraday bool) any {
@@ -467,17 +488,14 @@ func runBacktest(req runReq) runResp {
 		return runResp{Error: fmt.Sprintf("only %d bars for %s — widen the date range", len(bars), req.Symbol)}
 	}
 
-	// The engine's Spread is a per-fill price fraction applied in the adverse
-	// direction; candles are mid, so each fill crosses half the bid-ask width.
-	spreadFrac := 0.0
-	if req.SpreadPts > 0 {
-		spreadFrac = req.SpreadPts / 2 / bars[0].Close
-	}
 	opts := backtest.Options{
-		Cash:           req.Cash,
-		Margin:         1 / req.Leverage,
-		Spread:         spreadFrac,
-		FinalizeTrades: false,
+		Cash:   req.Cash,
+		Margin: 1 / req.Leverage,
+		Spread: spreadFraction(req.SpreadPts, bars),
+		// Finalize so a position still open at data end becomes a closed
+		// trade: it then shows in the trade stats AND pays financing below,
+		// symmetric with the always-finalized buy & hold benchmark.
+		FinalizeTrades: true,
 	}
 
 	stRes, err := backtest.New(backtest.FromBars(bars), strat, opts).Run()

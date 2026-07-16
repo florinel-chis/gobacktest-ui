@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	backtest "github.com/florinel-chis/gobacktest"
 )
 
 // TestRecoverJSONTurnsPanicIntoJSON500 proves the middleware converts a handler
@@ -248,6 +250,30 @@ func TestChartTime(t *testing.T) {
 		if got := intradayInterval(iv); got != want {
 			t.Errorf("intradayInterval(%q) = %v, want %v", iv, got, want)
 		}
+	}
+}
+
+// TestSpreadFraction: the engine's Spread is a price FRACTION, so a
+// point-denominated spread has to be divided by a reference price. Using the
+// series' mean close keeps the approximation centred; anchoring to the first
+// bar would over- or under-charge every fill of a trending series.
+func TestSpreadFraction(t *testing.T) {
+	mk := func(closes ...float64) []backtest.Bar {
+		bars := make([]backtest.Bar, len(closes))
+		for i, c := range closes {
+			bars[i] = backtest.Bar{Close: c}
+		}
+		return bars
+	}
+	// Mean close of {100, 300} is 200: 2 points of spread -> 2/2/200 = 0.005.
+	if got := spreadFraction(2, mk(100, 300)); got != 0.005 {
+		t.Errorf("spreadFraction(2, mean 200) = %v, want 0.005", got)
+	}
+	if got := spreadFraction(0, mk(100)); got != 0 {
+		t.Errorf("zero spread should be free: %v", got)
+	}
+	if got := spreadFraction(2, nil); got != 0 {
+		t.Errorf("no bars should yield 0, got %v", got)
 	}
 }
 
