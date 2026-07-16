@@ -4,6 +4,10 @@ github.com/florinel-chis/oanda-go v0.1.0 h1:3dUXNglZZRiZDJsUlZjnw/paii7p2R9P4/+n
 github.com/florinel-chis/oanda-go v0.1.0/go.mod h1:A//4aXcNVfEG9n+GXsg2junDRuXtV0yuf15+VsgopN0=
 github.com/florinel-chis/oanda-go/backtestsource v0.1.0 h1:C4Sz7ozhcF6Pqe4yRdM5rLlnrwGBYn/qmWBErRb/pdA=
 github.com/florinel-chis/oanda-go/backtestsource v0.1.0/go.mod h1:Z1MDmh7qqcQTxjNwaw4vnWbXi+nEcdegCdFXxamD67M=
+github.com/florinel-chis/trading212-go v0.1.0 h1:3rRMU+vkFss8veMLPnkSyiahz4SNc8oqEZCK8mnm/yw=
+github.com/florinel-chis/trading212-go v0.1.0/go.mod h1:NFIGacFoS+yjDlzTRR2tuRvop4Qp0zviFDc5WYI8LGo=
+github.com/florinel-chis/trading212-go/backtestsource v0.1.0 h1:9skfVGEfiZ6UQUZJqF1ZBhMASirrc/op0snXx0S+yN4=
+github.com/florinel-chis/trading212-go/backtestsource v0.1.0/go.mod h1:Fn8feQr4+n8WtJuBhqwRyie425tjMxNYDvBoWB6GzpA=
 github.com/florinel-chis/yahoo-go v0.1.0 h1:bJ57L64TrxxfVCJLxhZQA8XSWKNi/P+/kIKvbyo9Vuo=
 github.com/florinel-chis/yahoo-go v0.1.0/go.mod h1:CrMBuqLBS8qAP1/0/ysdHPUjv9B/AMrAW4hoCb25XeE=
 github.com/florinel-chis/yahoo-go/backtestsource v0.1.0 h1:mUJZ0v7l9UeBOS7iQTLFt/0U6p7pW/1LczsC0+jdN3s=

@@ -189,6 +189,28 @@ func TestNewSource(t *testing.T) {
 	}
 }
 
+// TestNewSourceT212 proves the Trading 212 source needs a key pair (from env
+// or .env files), errors helpfully without leaking values, and builds once
+// credentials are present. Order matters: the missing-credentials case must
+// run before the cached singleton is populated.
+func TestNewSourceT212(t *testing.T) {
+	t.Setenv("T212_API_KEY", "")
+	t.Setenv("T212_API_SECRET", "")
+	_, err := newSource(runReq{Source: "t212"})
+	if err == nil || !strings.Contains(err.Error(), "T212_API_KEY") {
+		t.Fatalf("t212 without creds: err = %v, want a credential error", err)
+	}
+
+	t.Setenv("T212_API_KEY", "test-key")
+	t.Setenv("T212_API_SECRET", "test-secret")
+	if _, err := newSource(runReq{Source: "t212"}); err != nil {
+		t.Fatalf("t212 with creds: %v", err)
+	}
+	if strings.Contains(err.Error(), "test-secret") {
+		t.Error("credential error text must never contain values")
+	}
+}
+
 // TestBuildStrategy proves strategy selection and its validation paths.
 func TestBuildStrategy(t *testing.T) {
 	valid := []condReq{{Indicator: "rsi", Op: "<", P1: 14}}

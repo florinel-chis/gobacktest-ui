@@ -6,6 +6,8 @@ require (
 	github.com/florinel-chis/gobacktest v0.1.0
 	github.com/florinel-chis/oanda-go v0.1.0
 	github.com/florinel-chis/oanda-go/backtestsource v0.1.0
+	github.com/florinel-chis/trading212-go v0.1.0
+	github.com/florinel-chis/trading212-go/backtestsource v0.1.0
 	github.com/florinel-chis/yahoo-go/backtestsource v0.1.0
 )
 

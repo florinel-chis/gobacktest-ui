@@ -1,14 +1,20 @@
 // Command gobacktest-ui serves an interactive multi-source backtesting web
-// lab. Pick a data source (Yahoo or Oanda), a symbol/instrument, a bar
-// interval, a date range, and a strategy — either the custom condition
+// lab. Pick a data source (Yahoo, Oanda, or Trading 212), a symbol/instrument,
+// a bar interval, a date range, and a strategy — either the custom condition
 // builder (AND/OR indicator conditions, take-profit / stop-loss / time exit,
 // one-at-a-time or pyramiding) or a library strategy from the strategies
 // package (Williams %R oversold, with or without the EMA filter) — run the
 // backtest against live data, and see the equity curve vs buy & hold, the
 // price with trade markers, and a full stats scorecard.
 //
-// The Oanda source needs OANDA_TOKEN on the server (env or .env); the token
-// never reaches the browser.
+// The Oanda source needs OANDA_TOKEN on the server (env or .env); the
+// Trading 212 source needs T212_API_KEY / T212_API_SECRET (env, .env.t212,
+// or .env — the api_key_id / secret key names of a .env.t212 file also
+// work). Credentials never reach the browser. Trading 212 has no candle
+// endpoints: its tickers (AAPL_US_EQ, TMGl_EQ, ...) are resolved to Yahoo
+// symbols by the trading212-go backtestsource adapter and the bars come
+// from Yahoo, which allows intraday intervals down to 1m (with Yahoo's
+// lookback limits: 1m ~7 days, 5m-30m ~60 days, 1h ~730 days).
 //
 // stdlib net/http only; Lightweight Charts is vendored and served locally.
 //
@@ -27,6 +33,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	backtest "github.com/florinel-chis/gobacktest"
@@ -38,11 +45,16 @@ import (
 	"github.com/florinel-chis/gobacktest/strategies"
 	oanda "github.com/florinel-chis/oanda-go"
 	oandabs "github.com/florinel-chis/oanda-go/backtestsource"
+	t212 "github.com/florinel-chis/trading212-go"
+	t212bs "github.com/florinel-chis/trading212-go/backtestsource"
 	yahoobs "github.com/florinel-chis/yahoo-go/backtestsource"
 )
 
 // envFiles are searched for OANDA_TOKEN when the Oanda source is selected.
 var envFiles = []string{".env"}
+
+// t212EnvFiles are searched for the Trading 212 key pair.
+var t212EnvFiles = []string{".env.t212", ".env"}
 
 //go:embed index.html
 var indexHTML []byte
@@ -303,8 +315,8 @@ func (buyHold) Next(st *backtest.State) {
 
 // ---- backtest execution --------------------------------------------------
 
-// newSource resolves the requested data source. The Oanda token comes from
-// the environment / .env and is never sent to or read from the browser.
+// newSource resolves the requested data source. Credentials come from the
+// environment / .env files and are never sent to or read from the browser.
 func newSource(req runReq) (source.Source, error) {
 	switch req.Source {
 	case "", "yahoo":
@@ -315,8 +327,44 @@ func newSource(req runReq) (source.Source, error) {
 			return nil, fmt.Errorf("oanda source: OANDA_TOKEN not set on the server (env or %s)", strings.Join(envFiles, ", "))
 		}
 		return oandabs.New(oanda.New(tok)), nil
+	case "t212":
+		return t212Source()
 	}
-	return nil, fmt.Errorf("unknown source %q (want yahoo or oanda)", req.Source)
+	return nil, fmt.Errorf("unknown source %q (want yahoo, oanda or t212)", req.Source)
+}
+
+// t212Cache holds the process-wide Trading 212 source. The adapter caches the
+// ~17k-instrument list for its lifetime and the instruments endpoint allows
+// one request per 50 seconds, so building a fresh adapter per backtest run
+// would rate-limit the second run — the source must be shared.
+var t212Cache struct {
+	sync.Mutex
+	src source.Source
+}
+
+// t212Source returns the shared Trading 212 source, building it on first use
+// from T212_API_KEY / T212_API_SECRET (or the api_key_id / secret names used
+// by a .env.t212 file). Errors are not cached so a fixed environment is
+// picked up on the next request.
+func t212Source() (source.Source, error) {
+	t212Cache.Lock()
+	defer t212Cache.Unlock()
+	if t212Cache.src != nil {
+		return t212Cache.src, nil
+	}
+	key := dotenv.Get("T212_API_KEY", t212EnvFiles...)
+	if key == "" {
+		key = dotenv.Get("api_key_id", t212EnvFiles...)
+	}
+	secret := dotenv.Get("T212_API_SECRET", t212EnvFiles...)
+	if secret == "" {
+		secret = dotenv.Get("secret", t212EnvFiles...)
+	}
+	if key == "" || secret == "" {
+		return nil, fmt.Errorf("t212 source: T212_API_KEY / T212_API_SECRET not set on the server (env or %s)", strings.Join(t212EnvFiles, ", "))
+	}
+	t212Cache.src = t212bs.New(t212.New(key, secret), yahoobs.New())
+	return t212Cache.src, nil
 }
 
 // buildStrategy resolves the requested strategy. "conditions" is the custom

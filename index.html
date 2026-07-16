@@ -73,20 +73,23 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
       <button class="btn" data-preset="rsi">RSI oversold</button>
       <button class="btn" data-preset="wrema">WR+EMA</button>
       <button class="btn" data-preset="eu50">EU50 %R (Oanda)</button>
+      <button class="btn" data-preset="faang">FAANG 1h (T212)</button>
     </div>
 
     <h2>Market</h2>
     <div class="grid2">
       <div class="field"><label>Data source</label>
-        <select id="source"><option value="yahoo">Yahoo Finance</option><option value="oanda">Oanda (live v20)</option></select></div>
+        <select id="source"><option value="yahoo">Yahoo Finance</option><option value="oanda">Oanda (live v20)</option><option value="t212">Trading 212 (stocks, bars via Yahoo)</option></select></div>
       <div class="field"><label>Interval</label>
         <select id="interval">
-          <option value="1d">1 day</option><option value="4h">4 hours</option><option value="1h">1 hour</option>
-          <option value="10m">10 min</option><option value="1wk">1 week</option>
+          <option value="1d">1 day</option><option value="4h">4 hours (Oanda)</option><option value="1h">1 hour (&le;730d)</option>
+          <option value="30m">30 min (&le;60d)</option><option value="15m">15 min (&le;60d)</option>
+          <option value="5m">5 min (&le;60d)</option><option value="1m">1 min (&le;7d)</option>
+          <option value="10m">10 min (Oanda)</option><option value="1wk">1 week</option>
         </select></div>
     </div>
     <div class="grid2">
-      <div class="field"><label>Symbol / instrument</label><input id="symbol" value="SPY"></div>
+      <div class="field"><label>Symbol / instrument</label><input id="symbol" value="SPY" list="symbolList"><datalist id="symbolList"></datalist></div>
       <div class="field"><label>Cash ($)</label><input id="cash" type="number" value="10000"></div>
     </div>
     <div class="grid2">
@@ -231,7 +234,8 @@ function readConds(){
   }));
 }
 
-const yearAgo = () => new Date(Date.now()-365*864e5).toISOString().slice(0,10);
+const daysAgo = d => new Date(Date.now()-d*864e5).toISOString().slice(0,10);
+const yearAgo = () => daysAgo(365);
 const PRESETS = {
   recommended:{source:"yahoo",interval:"1d",strategy:"conditions",symbol:"SPY",start:"2020-01-01",tp:15,sl:0,timeExit:0,pyramid:true,lotPct:20,cooldown:3,logic:"AND",
     conditions:[{indicator:"wrema",p1:21,p2:13,op:"<=",value:-40}]},
@@ -241,7 +245,35 @@ const PRESETS = {
     conditions:[{indicator:"wrema",p1:21,p2:13,op:"<=",value:-70}]},
   eu50:{source:"oanda",interval:"4h",strategy:"wr",symbol:"EU50_EUR",start:yearAgo(),tp:0.5,sl:0,timeExit:0,pyramid:false,lotPct:20,cooldown:3,logic:"AND",
     conditions:[],wrPeriod:21,wrThr:-80,emaPeriod:12,emaThr:-80,spreadPts:1.5,finRatePct:4.68,leverage:1},
+  faang:{source:"t212",interval:"1h",strategy:"wrema",symbol:"AAPL_US_EQ",start:daysAgo(360),tp:2,sl:0,timeExit:0,pyramid:false,lotPct:20,cooldown:3,logic:"AND",
+    conditions:[],wrPeriod:21,wrThr:-80,emaPeriod:12,emaThr:-80,spreadPts:0,finRatePct:0,leverage:1},
 };
+
+// Symbol suggestions per source; the input stays free-text.
+const SYMBOLS = {
+  yahoo: ["SPY","QQQ","AAPL","MSFT","AMZN","GOOGL","META","NFLX","NVDA","TSLA"],
+  oanda: ["EU50_EUR","NL25_EUR","DE30_EUR","SPX500_USD","EUR_USD"],
+  // Meta trades as FB_US_EQ on T212 (legacy id; shortName META -> Yahoo META).
+  t212:  ["FB_US_EQ","AAPL_US_EQ","AMZN_US_EQ","NFLX_US_EQ","GOOGL_US_EQ",
+          "MSFT_US_EQ","NVDA_US_EQ","TSLA_US_EQ","RRl_EQ","VOW3d_EQ"],
+};
+// Yahoo intraday lookback limits (days). T212 bars come from Yahoo, so the
+// same limits apply; Oanda has no such caps.
+const INTRADAY_MAX_DAYS = {"1m":7,"5m":59,"15m":59,"30m":59,"1h":729};
+function syncMarketUI(){
+  const src=$("source").value;
+  $("symbolList").innerHTML=(SYMBOLS[src]||[]).map(s=>`<option value="${s}">`).join("");
+  if(SYMBOLS[src] && !SYMBOLS[src].includes($("symbol").value.trim()))
+    $("symbol").value=SYMBOLS[src][src==="t212"?1:0]; // t212 default: AAPL_US_EQ
+  clampStartForInterval();
+}
+function clampStartForInterval(){
+  const src=$("source").value, iv=$("interval").value;
+  const max=INTRADAY_MAX_DAYS[iv];
+  if(src==="oanda" || !max) return;
+  const floor=daysAgo(max);
+  if(!$("start").value || $("start").value<floor) $("start").value=floor;
+}
 function syncStrategyUI(){
   const s=$("strategy").value;
   const canned = s!=="conditions";
@@ -278,12 +310,15 @@ function applyPreset(p){
   $("spreadPts").value=p.spreadPts??0; $("finRatePct").value=p.finRatePct??0; $("leverage").value=p.leverage??1;
   $("conds").innerHTML=""; p.conditions.forEach(addCond);
   syncStrategyUI();
+  syncMarketUI();
 }
 document.querySelectorAll("[data-preset]").forEach(b=>b.onclick=()=>applyPreset(PRESETS[b.dataset.preset]));
 $("addCond").onclick=()=>addCond();
 $("strategy").onchange=syncStrategyUI;
-$("source").onchange=syncStrategyUI;
+$("source").onchange=()=>{syncStrategyUI();syncMarketUI();};
+$("interval").onchange=clampStartForInterval;
 $("fetchCosts").onclick=fetchCosts;
+syncMarketUI();
 
 // charts
 const theme = () => {
@@ -309,7 +344,8 @@ async function run(){
   const body={
     source:$("source").value, interval:$("interval").value,
     strategy:$("strategy").value,
-    symbol:$("symbol").value.trim().toUpperCase(),
+    // T212 tickers embed lowercase venue letters (TMGl_EQ) — never uppercase them.
+    symbol:$("source").value==="t212"?$("symbol").value.trim():$("symbol").value.trim().toUpperCase(),
     start:$("start").value, end:$("end").value,
     cash:+$("cash").value,
     conditions:readConds(), logic:$("logic").value,
