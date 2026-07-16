@@ -37,6 +37,30 @@ no authentication, so it should not be exposed on all interfaces without
 your own access control in front of it). Pass `-addr :8080` (or any other
 address) to change that.
 
+## Docker
+
+A multi-stage [Dockerfile](Dockerfile) builds the app into a minimal
+distroless image (single static binary, frontend embedded, CA certificates
+included for the live data calls):
+
+```
+docker build -t gobacktest-ui .
+docker run --rm -p 127.0.0.1:8080:8080 gobacktest-ui
+```
+
+Then open http://localhost:8080. To enable the Oanda source, pass the token
+as an environment variable:
+
+```
+docker run --rm -p 127.0.0.1:8080:8080 -e OANDA_TOKEN=your-token gobacktest-ui
+```
+
+Inside the container the server binds all interfaces (`-addr :8080`), so the
+`-p` port mapping is the access control: keep the `127.0.0.1:` prefix unless
+you have your own authentication or firewall in front of it. Extra flags can
+be appended after the image name, e.g.
+`docker run --rm -p 9000:9000 gobacktest-ui -addr :9000`.
+
 ## Features
 
 - **Data sources**: Yahoo Finance (no credentials needed) and Oanda

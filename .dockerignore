@@ -1,0 +1,8 @@
+.git
+.gitignore
+.env
+Dockerfile
+.dockerignore
+*.md
+LICENSE
+bin/
