@@ -32,10 +32,13 @@ import (
 	"math"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	bvb "github.com/florinel-chis/bvb-go"
+	bvbbs "github.com/florinel-chis/bvb-go/backtestsource"
 	backtest "github.com/florinel-chis/gobacktest"
 	"github.com/florinel-chis/gobacktest-ui/internal/dotenv"
 	"github.com/florinel-chis/gobacktest/costs"
@@ -73,13 +76,13 @@ type condReq struct {
 }
 
 type runReq struct {
-	Source     string    `json:"source"`   // "yahoo" (default) | "oanda"
+	Source     string    `json:"source"`   // "yahoo" (default) | "oanda" | "t212" | "bvb"
 	Interval   string    `json:"interval"` // canonical source.Interval; "" -> 1d
 	Symbol     string    `json:"symbol"`
 	Start      string    `json:"start"`
 	End        string    `json:"end"`
 	Cash       float64   `json:"cash"`
-	Strategy   string    `json:"strategy"` // "conditions" (default) | "wr" | "wrema"
+	Strategy   string    `json:"strategy"` // "conditions" (default) | "wr" | "wrema" | "dca"
 	Conditions []condReq `json:"conditions"`
 	Logic      string    `json:"logic"` // "AND" | "OR"
 	TP         float64   `json:"tp"`    // percent, required > 0
@@ -95,6 +98,8 @@ type runReq struct {
 	SpreadPts  float64   `json:"spreadPts"`  // full bid-ask width in price points; half applied per fill
 	FinRatePct float64   `json:"finRatePct"` // financing cost, percent of notional per year (long)
 	Leverage   float64   `json:"leverage"`   // 0 or 1 = unleveraged; N -> Options.Margin = 1/N
+	DCAWeekday int       `json:"dcaWeekday"` // dca: 1=Monday … 5=Friday
+	DCAUnits   float64   `json:"dcaUnits"`   // dca: whole units bought per scheduled buy
 }
 
 // vp.Time / marker.Time are chart times: a "YYYY-MM-DD" string for daily and
@@ -329,9 +334,15 @@ func newSource(req runReq) (source.Source, error) {
 		return oandabs.New(oanda.New(tok)), nil
 	case "t212":
 		return t212Source()
+	case "bvb":
+		// Bucharest Stock Exchange: public backend, no credentials, native RON bars.
+		return bvbbs.New(bvb.New()), nil
 	}
-	return nil, fmt.Errorf("unknown source %q (want yahoo, oanda or t212)", req.Source)
+	return nil, fmt.Errorf("unknown source %q (want yahoo, oanda, t212 or bvb)", req.Source)
 }
+
+// sourceFor resolves a run's data source; a variable so tests can serve fixed bars.
+var sourceFor = newSource
 
 // t212Cache holds the process-wide Trading 212 source. The adapter caches the
 // ~17k-instrument list for its lifetime and the instruments endpoint allows
@@ -394,8 +405,16 @@ func buildStrategy(req runReq) (backtest.Strategy, error) {
 			TPPct:        req.TP,
 			Size:         0.9999, // all-in per entry, matching the condition strategy's sizing
 		}, nil
+	case "dca":
+		if req.DCAWeekday < 1 || req.DCAWeekday > 5 {
+			return nil, fmt.Errorf("dca weekday must be 1 (Monday) .. 5 (Friday)")
+		}
+		if req.DCAUnits < 1 || req.DCAUnits != math.Trunc(req.DCAUnits) || req.DCAUnits > 1e6 {
+			return nil, fmt.Errorf("dca units must be a whole number from 1 to 1000000")
+		}
+		return &dcaStrat{weekday: time.Weekday(req.DCAWeekday), units: req.DCAUnits}, nil
 	}
-	return nil, fmt.Errorf("unknown strategy %q (want conditions, wr or wrema)", req.Strategy)
+	return nil, fmt.Errorf("unknown strategy %q (want conditions, wr, wrema or dca)", req.Strategy)
 }
 
 // spreadFraction converts a point-denominated bid-ask spread into the
@@ -444,7 +463,8 @@ func runBacktest(req runReq) runResp {
 	if req.Cash <= 0 {
 		req.Cash = 10_000
 	}
-	if req.TP <= 0 {
+	dca := req.Strategy == "dca"
+	if req.TP <= 0 && !dca { // DCA only buys and holds: no exit to configure
 		return runResp{Error: "take-profit (tp) must be greater than 0"}
 	}
 	if req.SpreadPts < 0 {
@@ -463,7 +483,7 @@ func runBacktest(req runReq) runResp {
 	if err != nil {
 		return runResp{Error: err.Error()}
 	}
-	src, err := newSource(req)
+	src, err := sourceFor(req)
 	if err != nil {
 		return runResp{Error: err.Error()}
 	}
@@ -497,8 +517,12 @@ func runBacktest(req runReq) runResp {
 		// symmetric with the always-finalized buy & hold benchmark.
 		FinalizeTrades: true,
 	}
+	stOpts := opts
+	if dca {
+		stOpts = dcaOptions(opts)
+	}
 
-	stRes, err := backtest.New(backtest.FromBars(bars), strat, opts).Run()
+	stRes, err := backtest.New(backtest.FromBars(bars), strat, stOpts).Run()
 	if err != nil {
 		return runResp{Error: fmt.Sprintf("run: %v", err)}
 	}
@@ -534,7 +558,7 @@ func runBacktest(req runReq) runResp {
 	}
 	for _, t := range stRes.Trades {
 		resp.Markers = append(resp.Markers, marker{chartTime(t.EntryTime, intraday), "buy", jnum(t.EntryPrice), 0})
-		if !t.ExitTime.IsZero() {
+		if !t.ExitTime.IsZero() && !dca { // DCA holds: its only exits are end-of-data finalisation
 			resp.Markers = append(resp.Markers, marker{chartTime(t.ExitTime, intraday), "sell", jnum(t.ExitPrice), jnum(t.PL)})
 		}
 	}
@@ -556,6 +580,20 @@ func runBacktest(req runReq) runResp {
 		{"Win Rate", pct(stStats.WinRatePct), "—"},
 		{"Profit Factor", profitFactor(stStats), "—"},
 		{"Final Equity", money(stStats.EquityFinal), money(bhStats.EquityFinal)},
+	}
+	if dca {
+		s := summarizeDCA(stRes.Trades, bars[len(bars)-1].Close)
+		resp.Stats = append([]statRow{
+			{"Buys", fmt.Sprintf("%d", s.Buys), "—"},
+			{"Units held", strconv.FormatFloat(s.Units, 'f', -1, 64), "—"},
+			{"Cash invested", fmt.Sprintf("%.2f", s.Invested), "—"},
+			{"Average cost", fmt.Sprintf("%.2f", s.AvgCost), "—"},
+			{"Market value", fmt.Sprintf("%.2f", s.Value), "—"},
+			{"P/L", fmt.Sprintf("%+.2f (%+.2f%%)", s.PL, s.PLPct), "—"},
+		}, resp.Stats...)
+		if s.Buys > 0 && bars[len(bars)-1].Time.Weekday() == time.Weekday(req.DCAWeekday) {
+			resp.Warning = "the last bar falls on the buy day: an order placed on the final bar cannot fill"
+		}
 	}
 	return resp
 }

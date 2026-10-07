@@ -65,7 +65,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 <div class="app">
   <aside>
     <h1>Dip Strategy Lab</h1>
-    <div class="sub">gobacktest · live Yahoo / Oanda data</div>
+    <div class="sub">gobacktest · live Yahoo / Oanda / T212 / BVB data</div>
 
     <h2>Presets</h2>
     <div class="presets">
@@ -74,12 +74,13 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
       <button class="btn" data-preset="wrema">WR+EMA</button>
       <button class="btn" data-preset="eu50">EU50 %R (Oanda)</button>
       <button class="btn" data-preset="faang">FAANG 1h (T212)</button>
+      <button class="btn" data-preset="tlvdca">TLV weekly DCA (BVB)</button>
     </div>
 
     <h2>Market</h2>
     <div class="grid2">
       <div class="field"><label>Data source</label>
-        <select id="source"><option value="yahoo">Yahoo Finance</option><option value="oanda">Oanda (live v20)</option><option value="t212">Trading 212 (stocks, bars via Yahoo)</option></select></div>
+        <select id="source"><option value="yahoo">Yahoo Finance</option><option value="oanda">Oanda (live v20)</option><option value="t212">Trading 212 (stocks, bars via Yahoo)</option><option value="bvb">BVB (Bucharest)</option></select></div>
       <div class="field"><label>Interval</label>
         <select id="interval">
           <option value="1d">1 day</option><option value="4h">4 hours (Oanda)</option><option value="1h">1 hour (&le;730d)</option>
@@ -90,7 +91,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
     </div>
     <div class="grid2">
       <div class="field"><label>Symbol / instrument</label><input id="symbol" value="SPY" list="symbolList"><datalist id="symbolList"></datalist></div>
-      <div class="field"><label>Cash ($)</label><input id="cash" type="number" value="10000"></div>
+      <div class="field"><label>Cash</label><input id="cash" type="number" value="10000"></div>
     </div>
     <div class="grid2">
       <div class="field"><label>Start</label><input id="start" type="date" value="2020-01-01"></div>
@@ -103,7 +104,18 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
         <option value="conditions">Custom conditions</option>
         <option value="wr">Williams %R oversold (library)</option>
         <option value="wrema">Williams %R + EMA oversold (library)</option>
+        <option value="dca">Scheduled buying (DCA)</option>
       </select>
+    </div>
+
+    <div id="dcaSection" style="display:none">
+      <h2>Schedule</h2>
+      <div class="grid2">
+        <div class="field"><label>Buy every</label>
+          <select id="dcaWeekday"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5" selected>Friday</option></select></div>
+        <div class="field"><label>Units per buy</label><input id="dcaUnits" type="number" value="1" min="1" step="1"></div>
+      </div>
+      <p class="hint" style="margin:6px 0 0;text-align:left;max-width:none">Buys at that day's close (next session if the exchange is closed) and holds to the end; the summary values the holding at the last close.</p>
     </div>
 
     <div id="condsSection">
@@ -128,11 +140,13 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
       </div>
     </div>
 
+    <div id="exitSection">
     <h2>Exit</h2>
     <div class="grid3">
       <div class="field"><label>Take-profit %</label><input id="tp" type="number" value="15" step="0.5"></div>
       <div class="field" id="slField"><label>Stop-loss %</label><input id="sl" type="number" value="0" step="0.5"></div>
       <div class="field" id="timeExitField"><label>Time exit (bars)</label><input id="timeExit" type="number" value="0"></div>
+    </div>
     </div>
 
     <h2>Costs &amp; leverage</h2>
@@ -237,6 +251,8 @@ function readConds(){
 const daysAgo = d => new Date(Date.now()-d*864e5).toISOString().slice(0,10);
 const yearAgo = () => daysAgo(365);
 const PRESETS = {
+  tlvdca:{source:"bvb",interval:"1d",strategy:"dca",symbol:"TLV",start:"2025-10-10",tp:15,sl:0,timeExit:0,pyramid:false,lotPct:20,cooldown:0,logic:"AND",
+    dcaWeekday:5,dcaUnits:1,conditions:[]},
   recommended:{source:"yahoo",interval:"1d",strategy:"conditions",symbol:"SPY",start:"2020-01-01",tp:15,sl:0,timeExit:0,pyramid:true,lotPct:20,cooldown:3,logic:"AND",
     conditions:[{indicator:"wrema",p1:21,p2:13,op:"<=",value:-40}]},
   rsi:{source:"yahoo",interval:"1d",strategy:"conditions",symbol:"SPY",start:"2020-01-01",tp:5,sl:0,timeExit:0,pyramid:false,lotPct:20,cooldown:3,logic:"AND",
@@ -254,6 +270,7 @@ const SYMBOLS = {
   yahoo: ["SPY","QQQ","AAPL","MSFT","AMZN","GOOGL","META","NFLX","NVDA","TSLA"],
   oanda: ["EU50_EUR","NL25_EUR","DE30_EUR","SPX500_USD","EUR_USD"],
   // Meta trades as FB_US_EQ on T212 (legacy id; shortName META -> Yahoo META).
+  bvb:   ["TLV","SNP","H2O","BRD","ATB","BET"],
   t212:  ["FB_US_EQ","AAPL_US_EQ","AMZN_US_EQ","NFLX_US_EQ","GOOGL_US_EQ",
           "MSFT_US_EQ","NVDA_US_EQ","TSLA_US_EQ","RRl_EQ","VOW3d_EQ"],
 };
@@ -268,6 +285,7 @@ const SUPPORTED_INTERVALS = {
   yahoo: ["1d","1h","30m","15m","5m","1m","1wk"],
   t212:  ["1d","1h","30m","15m","5m","1m","1wk"],
   oanda: ["1d","4h","1h","30m","15m","5m","1m","10m","1wk"],
+  bvb:   ["1d","1h","30m","15m","5m","1m","1wk"],
 };
 function syncMarketUI(){
   const src=$("source").value;
@@ -282,18 +300,20 @@ function syncMarketUI(){
 function clampStartForInterval(){
   const src=$("source").value, iv=$("interval").value;
   const max=INTRADAY_MAX_DAYS[iv];
-  if(src==="oanda" || !max) return;
+  if(src==="oanda" || src==="bvb" || !max) return; // Yahoo-only intraday caps
   const floor=daysAgo(max);
   if(!$("start").value || $("start").value<floor) $("start").value=floor;
 }
 function syncStrategyUI(){
   const s=$("strategy").value;
-  const canned = s!=="conditions";
+  const canned = s!=="conditions", dca = s==="dca";
   $("condsSection").style.display = canned?"none":"";
   $("posSection").style.display   = canned?"none":"";
   $("slField").style.display      = canned?"none":"";
   $("timeExitField").style.display= canned?"none":"";
-  $("wrSection").style.display    = canned?"":"none";
+  $("wrSection").style.display    = canned&&!dca?"":"none";
+  $("dcaSection").style.display   = dca?"":"none";
+  $("exitSection").style.display  = dca?"none":"";  // DCA buys and holds
   $("wrEmaParams").style.display  = s==="wrema"?"":"none";
   $("fetchCosts").style.display   = $("source").value==="oanda"?"":"none";
 }
@@ -319,6 +339,8 @@ function applyPreset(p){
   if(p.wrThr!==undefined)  $("wrThr").value=p.wrThr;
   if(p.emaPeriod) $("emaPeriod").value=p.emaPeriod;
   if(p.emaThr!==undefined) $("emaThr").value=p.emaThr;
+  if(p.dcaWeekday) $("dcaWeekday").value=p.dcaWeekday;
+  if(p.dcaUnits)   $("dcaUnits").value=p.dcaUnits;
   $("spreadPts").value=p.spreadPts??0; $("finRatePct").value=p.finRatePct??0; $("leverage").value=p.leverage??1;
   $("conds").innerHTML=""; p.conditions.forEach(addCond);
   syncStrategyUI();
@@ -366,6 +388,7 @@ async function run(){
     wrPeriod:+$("wrPeriod").value, emaPeriod:+$("emaPeriod").value,
     wrThr:+$("wrThr").value, emaThr:+$("emaThr").value,
     spreadPts:+$("spreadPts").value, finRatePct:+$("finRatePct").value, leverage:+$("leverage").value,
+    dcaWeekday:+$("dcaWeekday").value, dcaUnits:+$("dcaUnits").value,
   };
   $("err").style.display="none";
   const btn=$("run"); btn.disabled=true; btn.textContent="Running…";
@@ -383,6 +406,7 @@ async function run(){
     if(d.error){ console.warn("backtest error:", d.error); showErr(d.error); return; }
     console.log("backtest ok", {equity:d.equity?.length, markers:d.markers?.length});
     render(d);
+    if(d.warning) showErr(`Note: ${d.warning}`);
   }catch(e){
     console.error("fetch failed", e);
     showErr(`Request failed: ${e.message}. The server may have crashed or stopped — check the terminal running "go run ." for a stack trace.`);
