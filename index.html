@@ -91,7 +91,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
     </div>
     <div class="grid2">
       <div class="field"><label>Symbol / instrument</label><input id="symbol" value="SPY" list="symbolList"><datalist id="symbolList"></datalist></div>
-      <div class="field"><label>Cash</label><input id="cash" type="number" value="10000"></div>
+      <div class="field"><label id="cashLabel">Cash</label><input id="cash" type="number" value="10000"></div>
     </div>
     <div class="grid2">
       <div class="field"><label>Start</label><input id="start" type="date" value="2020-01-01"></div>
@@ -287,6 +287,18 @@ const SUPPORTED_INTERVALS = {
   oanda: ["1d","4h","1h","30m","15m","5m","1m","10m","1wk"],
   bvb:   ["1d","1h","30m","15m","5m","1m","1wk"],
 };
+// Currency of a run's prices — and so of cash, equity and P/L (mirrors the
+// server's currencyFor): BVB is RON, an Oanda instrument's quote currency is its
+// suffix; Yahoo/T212 vary by listing and are not reported, so no label is shown.
+function currencyFor(src, sym){
+  if(src==="bvb") return "RON";
+  if(src==="oanda"){ const m=/_([A-Za-z]{3})$/.exec(sym.trim()); if(m) return m[1].toUpperCase(); }
+  return "";
+}
+function syncCurrency(){
+  const cur=currencyFor($("source").value, $("symbol").value);
+  $("cashLabel").textContent = cur ? `Cash (${cur})` : "Cash";
+}
 function syncMarketUI(){
   const src=$("source").value;
   $("symbolList").innerHTML=(SYMBOLS[src]||[]).map(s=>`<option value="${s}">`).join("");
@@ -296,6 +308,7 @@ function syncMarketUI(){
   for(const opt of $("interval").options) opt.disabled=!ok.includes(opt.value);
   if(!ok.includes($("interval").value)) $("interval").value="1d";
   clampStartForInterval();
+  syncCurrency();
 }
 function clampStartForInterval(){
   const src=$("source").value, iv=$("interval").value;
@@ -351,6 +364,7 @@ $("addCond").onclick=()=>addCond();
 $("strategy").onchange=syncStrategyUI;
 $("source").onchange=()=>{syncStrategyUI();syncMarketUI();};
 $("interval").onchange=clampStartForInterval;
+$("symbol").oninput=syncCurrency;
 $("fetchCosts").onclick=fetchCosts;
 syncMarketUI();
 

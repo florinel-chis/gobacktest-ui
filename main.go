@@ -124,15 +124,16 @@ type statRow struct {
 }
 
 type runResp struct {
-	Error   string    `json:"error,omitempty"`
-	Warning string    `json:"warning,omitempty"`
-	Symbol  string    `json:"symbol"`
-	Range   string    `json:"range"`
-	Equity  []vp      `json:"equity"`
-	BuyHold []vp      `json:"buyhold"`
-	Price   []vp      `json:"price"`
-	Markers []marker  `json:"markers"`
-	Stats   []statRow `json:"stats"`
+	Error    string    `json:"error,omitempty"`
+	Warning  string    `json:"warning,omitempty"`
+	Symbol   string    `json:"symbol"`
+	Currency string    `json:"currency,omitempty"` // ISO code of prices/cash/equity, "" if unknown
+	Range    string    `json:"range"`
+	Equity   []vp      `json:"equity"`
+	BuyHold  []vp      `json:"buyhold"`
+	Price    []vp      `json:"price"`
+	Markers  []marker  `json:"markers"`
+	Stats    []statRow `json:"stats"`
 }
 
 // ---- generic condition-driven strategy -----------------------------------
@@ -543,9 +544,11 @@ func runBacktest(req runReq) runResp {
 	finBH := costs.FinancingPct(bhRes.Trades, finRate, req.Cash)
 
 	intraday := intradayInterval(req.Interval)
+	cur := currencyFor(req)
 	resp := runResp{
-		Symbol: req.Symbol,
-		Range:  fmt.Sprintf("%s → %s (%d bars)", bars[0].Time.Format("2006-01-02"), bars[len(bars)-1].Time.Format("2006-01-02"), len(bars)),
+		Symbol:   req.Symbol,
+		Currency: cur,
+		Range:    fmt.Sprintf("%s → %s (%d bars)", bars[0].Time.Format("2006-01-02"), bars[len(bars)-1].Time.Format("2006-01-02"), len(bars)),
 	}
 	for _, p := range stRes.EquityCurve {
 		resp.Equity = append(resp.Equity, vp{chartTime(p.Time, intraday), jnum(p.Equity)})
@@ -579,17 +582,17 @@ func runBacktest(req runReq) runResp {
 		{"Trades / month", f2(tradesPerMo), "—"},
 		{"Win Rate", pct(stStats.WinRatePct), "—"},
 		{"Profit Factor", profitFactor(stStats), "—"},
-		{"Final Equity", money(stStats.EquityFinal), money(bhStats.EquityFinal)},
+		{"Final Equity", money(stStats.EquityFinal, cur), money(bhStats.EquityFinal, cur)},
 	}
 	if dca {
 		s := summarizeDCA(stRes.Trades, bars[len(bars)-1].Close)
 		resp.Stats = append([]statRow{
 			{"Buys", fmt.Sprintf("%d", s.Buys), "—"},
 			{"Units held", strconv.FormatFloat(s.Units, 'f', -1, 64), "—"},
-			{"Cash invested", fmt.Sprintf("%.2f", s.Invested), "—"},
-			{"Average cost", fmt.Sprintf("%.2f", s.AvgCost), "—"},
-			{"Market value", fmt.Sprintf("%.2f", s.Value), "—"},
-			{"P/L", fmt.Sprintf("%+.2f (%+.2f%%)", s.PL, s.PLPct), "—"},
+			{"Cash invested", amount(s.Invested, cur), "—"},
+			{"Average cost", amount(s.AvgCost, cur), "—"},
+			{"Market value", amount(s.Value, cur), "—"},
+			{"P/L", fmt.Sprintf("%s (%+.2f%%)", signedAmount(s.PL, cur), s.PLPct), "—"},
 		}, resp.Stats...)
 		if s.Buys > 0 && bars[len(bars)-1].Time.Weekday() == time.Weekday(req.DCAWeekday) {
 			resp.Warning = "the last bar falls on the buy day: an order placed on the final bar cannot fill"
@@ -668,8 +671,49 @@ func f2(f float64) string {
 	}
 	return fmt.Sprintf("%.2f", f)
 }
-func pct(f float64) string   { return f2(f) + "%" }
-func money(f float64) string { return fmt.Sprintf("$%.0f", f) }
+func pct(f float64) string { return f2(f) + "%" }
+
+// money formats an amount in the run's currency ("10234 RON"); with an unknown
+// currency it is a bare amount — never a guessed symbol.
+func money(f float64, cur string) string {
+	if cur == "" {
+		return fmt.Sprintf("%.0f", f)
+	}
+	return fmt.Sprintf("%.0f %s", f, cur)
+}
+
+// signedAmount is amount with an explicit sign ("+148.00 RON").
+func signedAmount(f float64, cur string) string {
+	if f >= 0 {
+		return "+" + amount(f, cur)
+	}
+	return amount(f, cur)
+}
+
+// amount formats a two-decimal amount in the run's currency.
+func amount(f float64, cur string) string {
+	if cur == "" {
+		return fmt.Sprintf("%.2f", f)
+	}
+	return fmt.Sprintf("%.2f %s", f, cur)
+}
+
+// currencyFor reports the currency a run's prices are quoted in — and so its
+// cash, equity and P/L, since the engine is currency-agnostic — or "" when the
+// source does not say. BVB serves RON; an Oanda instrument's quote currency is
+// its suffix (EU50_EUR, EUR_JPY). Yahoo (and T212, whose bars come from Yahoo)
+// varies by listing and the client does not report it yet.
+func currencyFor(req runReq) string {
+	switch req.Source {
+	case "bvb":
+		return "RON"
+	case "oanda":
+		if i := strings.LastIndex(req.Symbol, "_"); i >= 0 && len(req.Symbol)-i-1 == 3 {
+			return strings.ToUpper(req.Symbol[i+1:])
+		}
+	}
+	return ""
+}
 
 // ---- HTTP ----------------------------------------------------------------
 

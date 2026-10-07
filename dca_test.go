@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,8 +166,9 @@ func TestRunBacktestDCA(t *testing.T) {
 		rows[r.Label] = r
 	}
 	// 8 Friday buys of 1 unit at closes 14, 19, …, 49; last close 50.
-	want := map[string]string{"Buys": "8", "Units held": "8", "Cash invested": "252.00", "Average cost": "31.50",
-		"Market value": "400.00", "P/L": "+148.00 (+58.73%)"}
+	// BVB prices are RON, so every amount is labelled RON (never "$").
+	want := map[string]string{"Buys": "8", "Units held": "8", "Cash invested": "252.00 RON", "Average cost": "31.50 RON",
+		"Market value": "400.00 RON", "P/L": "+148.00 RON (+58.73%)"}
 	for label, v := range want {
 		if rows[label].Value != v {
 			t.Errorf("%s = %q, want %q", label, rows[label].Value, v)
@@ -178,7 +180,41 @@ func TestRunBacktestDCA(t *testing.T) {
 			t.Fatalf("unexpected sell marker at %v", m.Time)
 		}
 	}
+	if fe := rows["Final Equity"]; !strings.HasSuffix(fe.Value, " RON") || !strings.HasSuffix(fe.BH, " RON") || strings.Contains(fe.Value+fe.BH, "$") {
+		t.Errorf("Final Equity = %q / B&H %q, want RON amounts", fe.Value, fe.BH)
+	}
+	if resp.Currency != "RON" {
+		t.Errorf("resp.Currency = %q, want RON", resp.Currency)
+	}
 	if resp.Stats[0].Label != "Buys" {
 		t.Errorf("DCA rows should come first, got %q", resp.Stats[0].Label)
+	}
+}
+
+func TestCurrencyFor(t *testing.T) {
+	cases := []struct {
+		source, symbol, want string
+	}{
+		{"bvb", "TLV", "RON"},
+		{"oanda", "EU50_EUR", "EUR"},
+		{"oanda", "EUR_JPY", "JPY"},
+		{"oanda", "SPX500_USD", "USD"},
+		{"yahoo", "SPY", ""}, // the Yahoo client does not report a currency yet: say nothing rather than guess
+		{"", "SAP.DE", ""},
+		{"t212", "AAPL_US_EQ", ""},
+	}
+	for _, c := range cases {
+		if got := currencyFor(runReq{Source: c.source, Symbol: c.symbol}); got != c.want {
+			t.Errorf("currencyFor(%s, %s) = %q, want %q", c.source, c.symbol, got, c.want)
+		}
+	}
+}
+
+func TestMoney(t *testing.T) {
+	if got := money(10233.58, "RON"); got != "10234 RON" {
+		t.Errorf("money RON = %q", got)
+	}
+	if got := money(10233.58, ""); got != "10234" {
+		t.Errorf("money unknown currency = %q, want a bare amount (no $)", got)
 	}
 }
