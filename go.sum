@@ -1,9 +1,9 @@
-github.com/florinel-chis/bvb-go v0.1.0 h1:N1gjgnFX1w3Q517i+oyjzjB22RYvZb4PG5UjBBj8lmg=
-github.com/florinel-chis/bvb-go v0.1.0/go.mod h1:tTcQDKHAvRcEyUEWY9R2dI5WrwMqmpyslQmaUfisFUo=
+github.com/florinel-chis/bvb-go v0.2.0 h1:gUatOzAe9pPKvXVHtlm10j3iwcyTBrgn+/O6Pcw8vB4=
+github.com/florinel-chis/bvb-go v0.2.0/go.mod h1:tTcQDKHAvRcEyUEWY9R2dI5WrwMqmpyslQmaUfisFUo=
 github.com/florinel-chis/bvb-go/backtestsource v0.1.1 h1:iODbPyhPSKXLT/j9MSInb8BOLXK2YTZBU0wU+jfYA+c=
 github.com/florinel-chis/bvb-go/backtestsource v0.1.1/go.mod h1:SGHiOoPt6oNlLawKKbpdJ26rQEa3t/Xm03XU6TEcTlQ=
-github.com/florinel-chis/gobacktest v0.1.1 h1:v/pxrduriQdvzEhUVL+FztGtWJBcmF+Zq+W8R80GGv0=
-github.com/florinel-chis/gobacktest v0.1.1/go.mod h1:oKuqR0SCm0ju2OQBvBii/zSMmyHF9hLwE7Ns1e5j9ns=
+github.com/florinel-chis/gobacktest v0.2.0 h1:IkmLTMSDvRNc2VFA2QRN7hsp97bjSJVk49iH6UKF5Tk=
+github.com/florinel-chis/gobacktest v0.2.0/go.mod h1:oKuqR0SCm0ju2OQBvBii/zSMmyHF9hLwE7Ns1e5j9ns=
 github.com/florinel-chis/oanda-go v0.1.1 h1:DH5Uq07TftOidPImAqkttEgVFLN91re+WabFm4sh+Bo=
 github.com/florinel-chis/oanda-go v0.1.1/go.mod h1:A//4aXcNVfEG9n+GXsg2junDRuXtV0yuf15+VsgopN0=
 github.com/florinel-chis/oanda-go/backtestsource v0.1.1 h1:SitjY4u1IkYgCSOY7DLenm3lS2N26TVuovwuwzy2U2M=

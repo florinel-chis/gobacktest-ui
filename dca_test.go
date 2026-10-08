@@ -48,18 +48,27 @@ func entryPrices(res *backtest.Result) []float64 {
 	return out
 }
 
-// The assertions below check fill PRICES: each buy fills at the close of the
-// day it was placed. (Under TradeOnClose the published engine stamps
-// Trade.EntryTime with the following bar; backtesting.py stamps the placing
-// bar. Assert dates once the engine fix is released.)
+// Each buy fills at the close of the day it was placed, and is stamped with
+// that day (gobacktest >= v0.2.0, matching backtesting.py's trade_on_close).
+
+func entryDates(res *backtest.Result) []string {
+	var out []string
+	for _, tr := range res.Trades {
+		out = append(out, tr.EntryTime.Format("2006-01-02"))
+	}
+	return out
+}
 
 func TestDCABuysEveryTargetWeekdayAtThatClose(t *testing.T) {
 	// Mon 2026-01-05 + 16 sessions (ends Mon 2026-01-26): Fridays 9, 16, 23 Jan
 	// close at 14, 19, 24.
 	bars := weekdayBars(time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC), 16)
-	got := entryPrices(runDCA(t, bars, time.Friday, 1))
-	if want := []float64{14, 19, 24}; !equalFloats(got, want) {
+	res := runDCA(t, bars, time.Friday, 1)
+	if got, want := entryPrices(res), []float64{14, 19, 24}; !equalFloats(got, want) {
 		t.Fatalf("fills at %v, want each Friday's close %v", got, want)
+	}
+	if got, want := strings.Join(entryDates(res), ","), "2026-01-09,2026-01-16,2026-01-23"; got != want {
+		t.Fatalf("buys stamped %s, want the Fridays %s", got, want)
 	}
 }
 
@@ -67,9 +76,12 @@ func TestDCAHolidayBuysNextSession(t *testing.T) {
 	// Friday 2026-01-16 is closed: that week's buy is Monday 2026-01-19 (close
 	// 19); Friday 2026-01-23 closes at 23.
 	bars := weekdayBars(time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC), 16, "2026-01-16")
-	got := entryPrices(runDCA(t, bars, time.Friday, 1))
-	if want := []float64{14, 19, 23}; !equalFloats(got, want) {
+	res := runDCA(t, bars, time.Friday, 1)
+	if got, want := entryPrices(res), []float64{14, 19, 23}; !equalFloats(got, want) {
 		t.Fatalf("fills at %v, want %v", got, want)
+	}
+	if got, want := strings.Join(entryDates(res), ","), "2026-01-09,2026-01-19,2026-01-23"; got != want {
+		t.Fatalf("buys stamped %s, want %s (holiday week buys Monday)", got, want)
 	}
 }
 
