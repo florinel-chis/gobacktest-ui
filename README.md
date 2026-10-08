@@ -2,13 +2,16 @@
 
 An interactive, multi-source backtesting web lab built on
 [`gobacktest`](https://github.com/florinel-chis/gobacktest). Pick a data
-source (Yahoo Finance or Oanda), a symbol/instrument, a bar interval, and a
-date range; build a strategy either from a condition builder (AND/OR
-indicator conditions with take-profit / stop-loss / time exit, single-shot
-or pyramiding) or from a ready-made library strategy (Williams %R
-oversold, with or without an EMA filter); run it against live data; and see
-the equity curve vs. buy & hold, the price chart with trade markers, and a
-full stats scorecard, right in the browser.
+source (Yahoo Finance, Oanda, Trading 212 or the Bucharest Stock Exchange), a
+symbol/instrument, a bar interval, and a date range; build a strategy from a
+condition builder (AND/OR indicator conditions with take-profit / stop-loss /
+time exit, single-shot or pyramiding), a ready-made library strategy
+(Williams %R oversold, with or without an EMA filter), or a **scheduled
+buying (DCA)** plan; run it against live data; and see the equity curve vs.
+buy & hold, the price chart with trade markers, and a full stats scorecard,
+right in the browser.
+
+![Weekly DCA into Banca Transilvania (TLV) on the Bucharest Stock Exchange, amounts in RON](docs/screenshots/bvb-dca.png)
 
 The whole app is a single Go binary: the server is stdlib `net/http` only,
 and the frontend (`index.html`, Lightweight Charts) is embedded and served
@@ -63,8 +66,15 @@ be appended after the image name, e.g.
 
 ## Features
 
-- **Data sources**: Yahoo Finance (no credentials needed) and Oanda
-  (requires `OANDA_TOKEN`), both behind the same `source.Source` interface.
+- **Data sources**, all behind the same `source.Source` interface:
+  - **Yahoo Finance**: no credentials.
+  - **Oanda**: requires `OANDA_TOKEN`.
+  - **Trading 212**: requires `T212_API_KEY` / `T212_API_SECRET`. T212 has no candle
+    endpoint, so tickers resolve to Yahoo bars.
+  - **BVB (Bucharest Stock Exchange)**: no credentials. Native, split-adjusted RON
+    bars from BVB's own public datafeed via
+    [`bvb-go`](https://github.com/florinel-chis/bvb-go), which sends browser-like
+    requests and retries BVB's transient throttling on its own.
 - **Intervals**: from 1-minute bars up to daily/weekly/monthly, subject to
   each source's own supported set.
 - **Strategy building**:
@@ -75,19 +85,32 @@ be appended after the image name, e.g.
     pyramiding (multi-lot, cooldown-gated) entries.
   - Library strategies from `gobacktest/strategies` — Williams %R oversold
     mean reversion, with or without an EMA trend filter.
+  - **Scheduled buying (DCA)**: buy a whole number of units every chosen
+    weekday at that day's close and hold to the end — "what would I have if I
+    had bought 1 share every Friday?". A day the exchange is closed buys on the
+    next session, without looking ahead. The summary leads with buys, units
+    held, cash invested, average cost, market value at the last close, and
+    P/L. Dividends and other corporate actions are not modelled; BVB prices
+    are split-adjusted, so a unit is one of today's shares.
 - **Costs & leverage**: configurable spread (in price points), annual
   financing rate, and leverage (margin), applied identically to the
   strategy run and its buy & hold benchmark. For the Oanda source, the
   "Costs & leverage" panel can prefill live spread, financing rate, and
   margin rate for the selected instrument straight from Oanda's instrument
   facts endpoint.
+- **Currency**: the engine is currency-agnostic. Cash, equity and P/L are in
+  the currency the prices are quoted in, and the app labels them that way:
+  BVB runs read e.g. `10234 RON`, and an Oanda instrument uses its quote
+  currency (`EU50_EUR` → EUR). The Cash field shows the currency it expects.
+  Yahoo and Trading 212 listings vary in currency and the client doesn't
+  report it, so their amounts are shown without a symbol rather than with a
+  guessed `$`.
+- **Presets**, one click each: including **TLV weekly DCA (BVB)**.
 - **Results**: an equity curve chart (strategy vs. buy & hold), a price
   chart with buy/sell trade markers, and a stats table (return, financing
   cost, net return, Sharpe, max drawdown, CAGR, exposure, trade count and
   frequency, win rate, profit factor, final equity) for both the strategy
   and the buy & hold benchmark.
-
-Screenshots can be added here later — none are embedded in this README.
 
 ## License
 
